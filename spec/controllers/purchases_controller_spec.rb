@@ -1223,6 +1223,58 @@ describe PurchasesController, :vcr do
         expect(purchase.reload.can_contact).to eq false
         expect(purchase2.reload.can_contact).to eq false
       end
+
+      context "with secure external id" do
+        it "allows access with valid secure external id" do
+          purchase = create(:purchase, can_contact: true)
+          secure_id = purchase.secure_external_id(scope: "unsubscribe")
+          get :unsubscribe, params: { id: secure_id }
+          expect(response).to be_successful
+          expect(purchase.reload.can_contact).to eq false
+        end
+      end
+
+      context "with regular external id when purchase exists" do
+        it "redirects to secure redirect page for confirmation" do
+          purchase = create(:purchase, can_contact: true)
+          get :unsubscribe, params: { id: purchase.external_id }
+
+          expect(response).to be_redirect
+          expect(response.location).to start_with(secure_url_redirect_url)
+          expect(response.location).to include("encrypted_destination")
+          expect(response.location).to include("encrypted_confirmation_text")
+          expect(response.location).to include("message=Please+enter+your+email+address+to+unsubscribe")
+          expect(response.location).to include("field_name=Email+address")
+          expect(response.location).to include("error_message=Email+address+does+not+match")
+        end
+
+        it "includes correct destination URL in redirect params" do
+          purchase = create(:purchase, can_contact: true)
+          allow(SecureEncryptService).to receive(:encrypt).and_call_original
+
+          get :unsubscribe, params: { id: purchase.external_id }
+
+          expect(SecureEncryptService).to have_received(:encrypt).twice
+          expect(SecureEncryptService).to have_received(:encrypt).with(a_string_matching(%r{/purchases/.*unsubscribe}))
+        end
+
+        it "includes encrypted purchase email for confirmation" do
+          purchase = create(:purchase, can_contact: true)
+          allow(SecureEncryptService).to receive(:encrypt).and_call_original
+
+          get :unsubscribe, params: { id: purchase.external_id }
+
+          expect(SecureEncryptService).to have_received(:encrypt).with(purchase.email)
+        end
+      end
+
+      context "with invalid external id" do
+        it "raises 404 error" do
+          expect do
+            get :unsubscribe, params: { id: "invalid_id" }
+          end.to raise_error(ActionController::RoutingError)
+        end
+      end
     end
 
     describe "GET confirm_receipt_email" do

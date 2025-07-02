@@ -54,8 +54,34 @@ class PurchasesController < ApplicationController
   end
 
   def unsubscribe
-    (@purchase = Purchase.find_by_external_id(params[:id])) || e404
-    @purchase.unsubscribe_buyer
+    @purchase = Purchase.find_by_secure_external_id(params[:id], scope: "unsubscribe")
+
+    if @purchase.present?
+      @purchase.unsubscribe_buyer
+      return
+    end
+
+    # Fall back to legacy external_id
+    purchase = Purchase.find_by_external_id(params[:id])
+    if purchase.present?
+      destination_url = unsubscribe_purchase_url(id: purchase.secure_external_id(scope: "unsubscribe", expires_at: 2.days.from_now))
+      encrypted_destination = SecureEncryptService.encrypt(destination_url)
+      encrypted_confirmation_text = SecureEncryptService.encrypt(purchase.email)
+      message = "Please enter your email address to unsubscribe"
+      error_message = "Email address does not match"
+      field_name = "Email address"
+
+      redirect_to secure_url_redirect_path(
+        encrypted_destination: encrypted_destination,
+        encrypted_confirmation_text: encrypted_confirmation_text,
+        message: message,
+        field_name: field_name,
+        error_message: error_message
+      )
+      return
+    end
+
+    e404
   end
 
   def subscribe
