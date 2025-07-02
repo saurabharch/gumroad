@@ -55,7 +55,14 @@ class PurchasesController < ApplicationController
 
   def unsubscribe
     @purchase = Purchase.find_by_secure_external_id(params[:id], scope: "unsubscribe")
-    confirmation_text = params[:confirmation_text]
+
+    # If the confirmation_text is present, we are here from secure_redirect_controller#create.
+    # There's a chance Charge#id is used instead of Purchase#id. We need to look up the purchase
+    # by Charge in that case.
+    if params[:confirmation_text].present?
+      if @purchase.email != params[:confirmation_text]
+        @purchase = Charge.find(@purchase.id).successful_purchases.last
+    end
 
     if @purchase.present?
       @purchase.unsubscribe_buyer
