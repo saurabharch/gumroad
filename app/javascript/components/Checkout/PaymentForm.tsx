@@ -1,4 +1,4 @@
-import { loadScript as loadPaypal, PayPalNamespace } from "@paypal/paypal-js";
+import { PayPalScriptProvider, PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js";
 import { useStripe } from "@stripe/react-stripe-js";
 import {
   CanMakePaymentResult,
@@ -860,23 +860,11 @@ const BraintreePayPal = ({ token }: { token: string }) => {
   );
 };
 
-const NativePayPal = ({ implementation }: { implementation: PayPalNamespace }) => {
+const NativePayPal = () => {
   const [state, dispatch] = useState();
   const fail = useFail();
   const isDarkTheme = useIsDarkTheme();
-
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  const [payPromise, setPayPromise] = React.useState<{ resolve: () => void; reject: (e: Error) => void } | null>(null);
-
-  React.useEffect(() => {
-    if (!payPromise) return;
-    if (state.status.type === "input") payPromise.reject(new Error());
-    else payPromise.resolve();
-    setPayPromise(null);
-  }, [state.status.type]);
-
-  const stateRef = useRefToLatest(state);
+  const [{ isPending }] = usePayPalScriptReducer();
 
   const [paymentMethod, setPaymentMethod] = React.useState<null | PurchasePaymentMethod>(null);
 
@@ -885,91 +873,93 @@ const NativePayPal = ({ implementation }: { implementation: PayPalNamespace }) =
     dispatch({ type: "set-payment-method", paymentMethod });
   }, [paymentMethod, state.status.type]);
 
-  useRunOnce(() => {
-    if (!ref.current) return;
-    void implementation
-      .Buttons?.({
-        style: { color: "black", label: "pay", tagline: false },
-        createBillingAgreement: () => createBillingAgreementToken({ shipping: hasShipping(state) }),
-        onApprove: async (data) => {
-          assert(data.billingToken != null, "Billing token missing");
-          const result = await createBillingAgreement(data.billingToken);
-          dispatch({
-            type: "set-value",
-            country: result.payer.payer_info.billing_address.country_code,
-            zipCode: result.payer.payer_info.billing_address.postal_code,
-            fullName: `${result.payer.payer_info.first_name ?? ""} ${result.payer.payer_info.last_name ?? ""}`,
-            ...(stateRef.current.email ? {} : { email: result.payer.payer_info.email }),
-          });
-          if (result.shipping_address) {
-            const address = result.shipping_address;
-            dispatch({
-              type: "set-value",
-              country: address.country_code,
-              state: address.state || address.city,
-              zipCode: address.postal_code,
-              city: address.city,
-              fullName: address.recipient_name,
-              address: address.line1 + (address.line2 ?? ""),
-            });
-          }
-          const selectedPaymentMethod: SelectedPaymentMethod = {
-            type: "paypal-native",
-            info: {
-              kind: "billingAgreement",
-              billingToken: data.billingToken,
-              agreementId: result.id,
-              email: result.payer.payer_info.email,
-              country: result.payer.payer_info.billing_address.country_code,
-            },
-            keepOnFile: null,
-          };
+  const stateRef = useRefToLatest(state);
 
-          setPaymentMethod(
-            await (requiresReusablePaymentMethod(state)
-              ? getReusablePaymentMethodResult(selectedPaymentMethod, { products: state.products })
-              : getPaymentMethodResult(selectedPaymentMethod)),
-          );
-        },
-        onError: fail,
-        onCancel: () => dispatch({ type: "cancel" }),
-        onClick: (_, actions) =>
-          new Promise<void>((resolve, reject) => {
-            setPayPromise({ resolve, reject });
-            dispatch({ type: "offer" });
-          }).then(actions.resolve, actions.reject),
-      })
-      .render(ref.current);
-  });
+  const createBillingAgreementHandler = () => createBillingAgreementToken({ shipping: hasShipping(state) });
+
+  const onApproveHandler = async (data: { billingToken?: string | null }) => {
+    assert(data.billingToken != null, "Billing token missing");
+    const result = await createBillingAgreement(data.billingToken);
+    dispatch({
+      type: "set-value",
+      country: result.payer.payer_info.billing_address.country_code,
+      zipCode: result.payer.payer_info.billing_address.postal_code,
+      fullName: `${result.payer.payer_info.first_name ?? ""} ${result.payer.payer_info.last_name ?? ""}`,
+      ...(stateRef.current.email ? {} : { email: result.payer.payer_info.email }),
+    });
+    if (result.shipping_address) {
+      const address = result.shipping_address;
+      dispatch({
+        type: "set-value",
+        country: address.country_code,
+        state: address.state || address.city,
+        zipCode: address.postal_code,
+        city: address.city,
+        fullName: address.recipient_name,
+        address: address.line1 + (address.line2 ?? ""),
+      });
+    }
+    const selectedPaymentMethod: SelectedPaymentMethod = {
+      type: "paypal-native",
+      info: {
+        kind: "billingAgreement",
+        billingToken: data.billingToken,
+        agreementId: result.id,
+        email: result.payer.payer_info.email,
+        country: result.payer.payer_info.billing_address.country_code,
+      },
+      keepOnFile: null,
+    };
+
+    setPaymentMethod(
+      await (requiresReusablePaymentMethod(state)
+        ? getReusablePaymentMethodResult(selectedPaymentMethod, { products: state.products })
+        : getPaymentMethodResult(selectedPaymentMethod)),
+    );
+  };
+
+  const onErrorHandler = () => {
+    fail();
+  };
+
+  const onCancelHandler = () => {
+    dispatch({ type: "cancel" });
+  };
+
+  const onClickHandler = () => {
+    dispatch({ type: "offer" });
+  };
+
+  if (isPending) {
+    return <Progress width="1em" />;
+  }
 
   return (
-    <>
-      <div
-        ref={ref}
-        hidden={isProcessing(state)}
-        style={isDarkTheme ? { filter: "invert(1) grayscale(1)" } : undefined}
+    <div style={isDarkTheme ? { filter: "invert(1) grayscale(1)" } : undefined}>
+      <PayPalButtons
+        style={{ color: "black", label: "pay", tagline: false }}
+        createBillingAgreement={createBillingAgreementHandler}
+        onApprove={onApproveHandler}
+        onError={onErrorHandler}
+        onCancel={onCancelHandler}
+        onClick={onClickHandler}
+        disabled={isProcessing(state)}
       />
-      {isProcessing(state) ? <Progress width="1em" /> : null}
-    </>
+    </div>
   );
 };
 
-const PayPal = () => {
+const PayPalContent = () => {
   const [state, dispatch] = useState();
+  const [{ isResolved }] = usePayPalScriptReducer();
 
-  const [nativePaypal, setNativePaypal] = React.useState<PayPalNamespace | null>(null);
-  useRunOnce(
-    asyncVoid(async () => {
-      if (!state.paypalClientId) return;
-      setNativePaypal(await loadPaypal({ clientId: state.paypalClientId, vault: true }));
-    }),
-  );
   const braintreeToken = useBraintreeToken(true);
   const implementation = state.products.reduce<Product["supports_paypal"]>((impl, item) => {
-    if (impl === "native" && item.supportsPaypal === "native" && nativePaypal) return "native";
+    if (impl === "native" && item.supportsPaypal === "native" && isResolved) return "native";
     if (impl !== null && item.supportsPaypal !== null && braintreeToken.type === "available") return "braintree";
     return null;
   }, "native");
+
   React.useEffect(() => {
     if (!implementation) return;
     dispatch({
@@ -1008,13 +998,23 @@ const PayPal = () => {
       <SharedInputs />
       {isTippingEnabled(state) ? <TipSelector /> : null}
       <div>
-        {nativePaypal && implementation === "native" ? (
-          <NativePayPal implementation={nativePaypal} />
+        {isResolved && implementation === "native" ? (
+          <NativePayPal />
         ) : braintreeToken.type === "available" ? (
           <BraintreePayPal token={braintreeToken.token} />
         ) : null}
       </div>
     </>
+  );
+};
+
+const PayPal = () => {
+  const [state] = useState();
+
+  return (
+    <PayPalScriptProvider options={{ clientId: state.paypalClientId ?? "", vault: true }}>
+      <PayPalContent />
+    </PayPalScriptProvider>
   );
 };
 
