@@ -15,8 +15,22 @@ class SecureRedirectController < ApplicationController
       return render json: { error: "Please enter the confirmation text" }, status: :unprocessable_entity
     end
 
-    if SecureEncryptService.verify(@encrypted_confirmation_text, confirmation_text)
+    encrypted_confirmation_texts = Array.wrap(@encrypted_confirmation_text)
+
+    if encrypted_confirmation_texts.any? { SecureEncryptService.verify(_1, confirmation_text) }
       destination = SecureEncryptService.decrypt(@encrypted_destination)
+
+      if params[:send_confirmation_text] == "true"
+        begin
+          uri = URI.parse(destination)
+          query_params = Rack::Utils.parse_query(uri.query)
+          query_params['confirmation_text'] = confirmation_text
+          uri.query = query_params.to_query
+          destination = uri.to_s
+        rescue URI::InvalidURIError
+          Rails.logger.error("Invalid destination: #{destination}")
+        end
+      end
 
       if destination.present?
         redirect_to destination

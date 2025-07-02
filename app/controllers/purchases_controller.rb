@@ -55,6 +55,7 @@ class PurchasesController < ApplicationController
 
   def unsubscribe
     @purchase = Purchase.find_by_secure_external_id(params[:id], scope: "unsubscribe")
+    confirmation_text = params[:confirmation_text]
 
     if @purchase.present?
       @purchase.unsubscribe_buyer
@@ -63,20 +64,28 @@ class PurchasesController < ApplicationController
 
     # Fall back to legacy external_id
     purchase = Purchase.find_by_external_id(params[:id])
-    if purchase.present?
+    charge = Charge.find_by_external_id(params[:id])
+
+    encrypted_confirmation_text = [SecureEncryptService.encrypt(purchase.email)] if purchase.present?
+    if charge.present? && charge.successful_purchases.any?
+      encrypted_confirmation_text += charge.successful_purchases.map(&:email).uniq.map { |email| SecureEncryptService.encrypt(email) }
+    end
+
+    if encrypted_confirmation_text.present?
       destination_url = unsubscribe_purchase_url(id: purchase.secure_external_id(scope: "unsubscribe", expires_at: 2.days.from_now))
       encrypted_destination = SecureEncryptService.encrypt(destination_url)
-      encrypted_confirmation_text = SecureEncryptService.encrypt(purchase.email)
       message = "Please enter your email address to unsubscribe"
       error_message = "Email address does not match"
       field_name = "Email address"
+      send_confirmation_text = "true"
 
       redirect_to secure_url_redirect_path(
         encrypted_destination: encrypted_destination,
         encrypted_confirmation_text: encrypted_confirmation_text,
         message: message,
         field_name: field_name,
-        error_message: error_message
+        error_message: error_message,
+        send_confirmation_text: send_confirmation_text
       )
       return
     end
