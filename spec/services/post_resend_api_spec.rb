@@ -191,7 +191,7 @@ describe PostResendApi, :freeze_time do
       purchase = create(:purchase, :from_seller, seller: @seller)
       send_emails(recipients: [{ email: "c1@example.com", purchase: }])
 
-      node = html_doc(sent_email_content).at_xpath(%(//a[@href="#{unsubscribe_purchase_url(purchase.external_id)}"]))
+      node = html_doc(sent_email_content).at_xpath(%(//a[@href="#{unsubscribe_purchase_url(purchase.secure_external_id(scope: "unsubscribe"))}"]))
       expect(node).to be_present
       expect(node.text).to eq("Unsubscribe")
     end

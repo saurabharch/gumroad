@@ -82,7 +82,7 @@ describe ReceiptPresenter::FooterInfo, :vcr do
     let(:chargeable) { purchase }
     let(:expected_url) do
       Rails.application.routes.url_helpers.unsubscribe_purchase_url(
-        purchase.external_id,
+        purchase.secure_external_id(scope: "unsubscribe"),
         host: UrlService.domain_with_protocol,
       )
     end

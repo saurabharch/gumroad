@@ -37,7 +37,7 @@ class ReceiptPresenter::FooterInfo
     link_to(
       "Unsubscribe",
       Rails.application.routes.url_helpers.unsubscribe_purchase_url(
-        chargeable.external_id,
+        chargeable.secure_external_id(scope: "unsubscribe"),
         host: UrlService.domain_with_protocol
       )
     )
