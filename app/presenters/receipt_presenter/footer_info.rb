@@ -34,7 +34,7 @@ class ReceiptPresenter::FooterInfo
   end
 
   def unsubscribe_link
-    if chargeable.is_a?(Charge)
+    if chargeable.is_a?(Charge) && chargeable.successful_purchases.any?
       chargeable = chargeable.successful_purchases.last
     end
 
