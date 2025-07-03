@@ -1300,8 +1300,8 @@ describe PurchasesController, :vcr do
             seller = create(:user)
             product = create(:product, user: seller)
             charge = create(:charge, seller: seller)
-            purchase1 = create(:purchase, link: product, seller: seller, email: "buyer1@example.com", charge: charge, purchase_state: "successful")
-            purchase2 = create(:purchase, link: product, seller: seller, email: "buyer2@example.com", charge: charge, purchase_state: "successful")
+            create(:purchase, link: product, seller: seller, email: "buyer1@example.com", charge: charge, purchase_state: "successful")
+            create(:purchase, link: product, seller: seller, email: "buyer2@example.com", charge: charge, purchase_state: "successful")
 
             allow(SecureEncryptService).to receive(:encrypt).and_call_original
 
@@ -1340,7 +1340,7 @@ describe PurchasesController, :vcr do
             seller = create(:user)
             product = create(:product, user: seller)
             charge = create(:charge, seller: seller)
-            purchase = create(:purchase, link: product, seller: seller, email: "buyer@example.com", charge: charge, purchase_state: "successful")
+            create(:purchase, link: product, seller: seller, email: "buyer@example.com", charge: charge, purchase_state: "successful")
 
             allow(Purchase).to receive(:find_by_external_id).with(charge.external_id).and_return(nil)
             allow(Charge).to receive(:find_by_external_id).with(charge.external_id).and_return(charge)
