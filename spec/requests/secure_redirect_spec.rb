@@ -5,7 +5,8 @@ require "spec_helper"
 describe("Secure Redirect", js: true, type: :feature) do
   let(:user) { create(:user) }
   let(:destination_url) { api_url(host: UrlService.domain_with_protocol) }
-  let(:confirmation_text) { user.email }
+  let(:confirmation_text_1) { "example@example.com" }
+  let(:confirmation_text_2) { user.email }
   let(:message) { "Please enter your email address to unsubscribe" }
   let(:field_name) { "Email address" }
   let(:error_message) { "Email address does not match" }
@@ -13,7 +14,7 @@ describe("Secure Redirect", js: true, type: :feature) do
   let(:secure_payload) do
     {
       destination: destination_url,
-      confirmation_texts: [confirmation_text],
+      confirmation_texts: [confirmation_text_1, confirmation_text_2],
       created_at: Time.current.to_i
     }
   end
@@ -63,7 +64,7 @@ describe("Secure Redirect", js: true, type: :feature) do
 
     context "with correct confirmation text" do
       it "redirects to the destination" do
-        fill_in field_name, with: confirmation_text
+        fill_in field_name, with: confirmation_text_2
         click_button "Continue"
 
         expect(page).to have_current_path(destination_url)
@@ -96,7 +97,7 @@ describe("Secure Redirect", js: true, type: :feature) do
       let(:invalid_secure_payload) do
         {
           destination: nil,
-          confirmation_texts: [confirmation_text],
+          confirmation_texts: [confirmation_text_2],
           created_at: Time.current.to_i
         }
       end
@@ -112,7 +113,7 @@ describe("Secure Redirect", js: true, type: :feature) do
       end
 
       it "shows an error message" do
-        fill_in field_name, with: confirmation_text
+        fill_in field_name, with: confirmation_text_2
         click_button "Continue"
         wait_for_ajax
 
@@ -134,7 +135,7 @@ describe("Secure Redirect", js: true, type: :feature) do
       end
 
       it "shows an error message" do
-        fill_in field_name, with: confirmation_text
+        fill_in field_name, with: confirmation_text_2
         click_button "Continue"
         wait_for_ajax
 
