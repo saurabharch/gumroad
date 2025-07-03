@@ -42,7 +42,7 @@ class SecureRedirectController < ApplicationController
         begin
           uri = URI.parse(destination)
           query_params = Rack::Utils.parse_query(uri.query)
-          query_params['confirmation_text'] = confirmation_text
+          query_params["confirmation_text"] = confirmation_text
           uri.query = query_params.to_query
           destination = uri.to_s
         rescue URI::InvalidURIError
