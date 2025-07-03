@@ -190,6 +190,7 @@ describe PostSendgridApi, :freeze_time do
 
   describe "Unsubscribe link" do
     it "links to purchase unsubscribe page when coming with a purchase" do
+      allow_any_instance_of(Purchase).to receive(:secure_external_id).and_return("sample-secure-id")
       purchase = create(:purchase, :from_seller, seller: @seller)
       send_emails(recipients: [{ email: "c1@example.com", purchase: }])
 
