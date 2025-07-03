@@ -59,9 +59,9 @@ class PurchasesController < ApplicationController
     # If the confirmation_text is present, we are here from secure_redirect_controller#create.
     # There's a chance Charge#id is used instead of Purchase#id in the original unsubscribe URL.
     # We need to look up the purchase by Charge#id in that case.
-    if params[:confirmation_text].present? && @purchase.email != params[:confirmation_text]
+    if params[:confirmation_text].present? && @purchase&.email != params[:confirmation_text]
       @purchase = Purchase.find_by(id: @purchase.charge.id)
-      e404 if @purchase.email != params[:confirmation_text]
+      e404 if @purchase&.email != params[:confirmation_text]
     end
 
     if @purchase.present?
@@ -72,6 +72,7 @@ class PurchasesController < ApplicationController
     # Fall back to legacy external_id and initiate secure redirect flow
     purchase = Purchase.find_by_external_id(params[:id])
     charge = Charge.find_by_external_id(params[:id])
+    e404 if purchase.blank? && charge.blank?
 
     confirmation_emails = Set.new
     if charge.present? && charge.successful_purchases.any?

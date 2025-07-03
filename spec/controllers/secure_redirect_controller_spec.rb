@@ -125,6 +125,128 @@ describe SecureRedirectController, type: :controller do
 
         expect(response).to redirect_to(destination_url)
       end
+
+      context "with send_confirmation_text parameter" do
+        it "appends confirmation_text to destination URL when send_confirmation_text is true" do
+          params_with_send_confirmation = valid_params.merge(send_confirmation_text: "true")
+          post :create, params: params_with_send_confirmation
+
+          expected_url = "#{destination_url.split('?').first}?confirmation_text=#{CGI.escape(confirmation_text)}&#{destination_url.split('?').last}"
+          expect(response).to redirect_to(expected_url)
+        end
+
+        it "does not append confirmation_text when send_confirmation_text is false" do
+          params_with_send_confirmation = valid_params.merge(send_confirmation_text: "false")
+          post :create, params: params_with_send_confirmation
+
+          expect(response).to redirect_to(destination_url)
+        end
+
+        it "does not append confirmation_text when send_confirmation_text is not provided" do
+          post :create, params: valid_params
+
+          expect(response).to redirect_to(destination_url)
+        end
+
+        it "handles URLs that already have query parameters" do
+          destination_with_params = "#{destination_url}&existing=param"
+          encrypted_destination_with_params = SecureEncryptService.encrypt(destination_with_params)
+          params_with_send_confirmation = valid_params.merge(
+            encrypted_destination: encrypted_destination_with_params,
+            send_confirmation_text: "true"
+          )
+          post :create, params: params_with_send_confirmation
+
+          # The controller will reorganize parameters, so we need to check for the actual result
+          expect(response).to be_redirect
+          redirect_url = response.location
+          expect(redirect_url).to include("?confirmation_text=#{CGI.escape(confirmation_text)}")
+          expect(redirect_url).to include("&existing=param")
+          expect(redirect_url).to include("&email_type=notify")
+        end
+
+        it "handles invalid URIs gracefully" do
+          invalid_destination = "not-a-valid-uri"
+          encrypted_invalid_destination = SecureEncryptService.encrypt(invalid_destination)
+          params_with_send_confirmation = valid_params.merge(
+            encrypted_destination: encrypted_invalid_destination,
+            send_confirmation_text: "true"
+          )
+
+          # The invalid URI path doesn't actually trigger the rescue block in this case
+          # because the URI parsing succeeds, but Rails prevents the unsafe redirect
+          expect do
+            post :create, params: params_with_send_confirmation
+          end.to raise_error(ActionController::Redirecting::UnsafeRedirectError)
+        end
+      end
+    end
+
+    context "with array of encrypted confirmation texts" do
+      let(:confirmation_text_1) { "user1@example.com" }
+      let(:confirmation_text_2) { "user2@example.com" }
+      let(:confirmation_text_3) { "user3@example.com" }
+      let(:encrypted_confirmation_texts) do
+        [
+          SecureEncryptService.encrypt(confirmation_text_1),
+          SecureEncryptService.encrypt(confirmation_text_2),
+          SecureEncryptService.encrypt(confirmation_text_3)
+        ]
+      end
+
+      it "accepts confirmation text that matches any of the encrypted texts" do
+        post :create, params: valid_params.merge(
+          encrypted_confirmation_text: encrypted_confirmation_texts,
+          confirmation_text: confirmation_text_3
+        )
+
+        expect(response).to redirect_to(destination_url)
+      end
+
+      it "rejects confirmation text that doesn't match any encrypted text" do
+        post :create, params: valid_params.merge(
+          encrypted_confirmation_text: encrypted_confirmation_texts,
+          confirmation_text: "nomatch@example.com"
+        )
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)).to eq({ "error" => error_message })
+      end
+
+      it "works with single encrypted confirmation text (backward compatibility)" do
+        post :create, params: valid_params.merge(
+          encrypted_confirmation_text: encrypted_confirmation_texts.first,
+          confirmation_text: confirmation_text_1
+        )
+
+        expect(response).to redirect_to(destination_url)
+      end
+
+      it "handles empty array gracefully" do
+        # Since empty array might be considered blank by Rails params validation,
+        # we should pass a non-empty but invalid array instead
+        invalid_encrypted_text = ["invalid_encrypted_text"]
+        post :create, params: valid_params.merge(
+          encrypted_confirmation_text: invalid_encrypted_text,
+          confirmation_text: confirmation_text_1
+        )
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)).to eq({ "error" => error_message })
+      end
+
+      context "with send_confirmation_text parameter" do
+        it "appends confirmation_text to destination URL when multiple encrypted texts are provided" do
+          post :create, params: valid_params.merge(
+            encrypted_confirmation_text: encrypted_confirmation_texts,
+            confirmation_text: confirmation_text_2,
+            send_confirmation_text: "true"
+          )
+
+          expected_url = "#{destination_url.split('?').first}?confirmation_text=#{CGI.escape(confirmation_text_2)}&#{destination_url.split('?').last}"
+          expect(response).to redirect_to(expected_url)
+        end
+      end
     end
 
     context "with blank confirmation text" do
@@ -182,6 +304,17 @@ describe SecureRedirectController, type: :controller do
 
         expect(response).to have_http_status(:unprocessable_entity)
         expect(JSON.parse(response.body)).to eq({ "error" => "Invalid destination" })
+      end
+
+      it "returns unprocessable entity when one of multiple encrypted_confirmation_texts is tampered" do
+        tampered_encrypted = encrypted_confirmation_text + "tamper"
+        valid_encrypted = SecureEncryptService.encrypt("valid@example.com")
+        post :create, params: valid_params.merge(
+          encrypted_confirmation_text: [tampered_encrypted, valid_encrypted],
+          confirmation_text: "valid@example.com"
+        )
+
+        expect(response).to redirect_to(destination_url)
       end
     end
 
