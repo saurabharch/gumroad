@@ -10,15 +10,20 @@ describe("Secure Redirect", js: true, type: :feature) do
   let(:field_name) { "Email address" }
   let(:error_message) { "Email address does not match" }
 
-  let(:encrypted_destination) { SecureEncryptService.encrypt(destination_url) }
-  let(:encrypted_confirmation_text) { SecureEncryptService.encrypt(confirmation_text) }
+  let(:secure_payload) do
+    {
+      destination: destination_url,
+      confirmation_texts: [confirmation_text],
+      created_at: Time.current.to_i
+    }
+  end
+  let(:encrypted_payload) { SecureEncryptService.encrypt(secure_payload.to_json) }
 
   describe "GET /secure_url_redirect" do
     context "with valid parameters" do
       it "displays the confirmation page with custom messages" do
         visit secure_url_redirect_path(
-          encrypted_destination: encrypted_destination,
-          encrypted_confirmation_text: encrypted_confirmation_text,
+          encrypted_payload: encrypted_payload,
           message: message,
           field_name: field_name,
           error_message: error_message
@@ -30,8 +35,7 @@ describe("Secure Redirect", js: true, type: :feature) do
 
       it "displays the confirmation page with default messages" do
         visit secure_url_redirect_path(
-          encrypted_destination: encrypted_destination,
-          encrypted_confirmation_text: encrypted_confirmation_text
+          encrypted_payload: encrypted_payload
         )
 
         expect(page).to have_content("Please enter the confirmation text to continue to your destination.")
@@ -40,13 +44,8 @@ describe("Secure Redirect", js: true, type: :feature) do
     end
 
     context "with invalid parameters" do
-      it "redirects to the root path if encrypted_destination is missing" do
-        visit secure_url_redirect_path(encrypted_confirmation_text: encrypted_confirmation_text)
-        expect(page).to have_current_path(login_path)
-      end
-
-      it "redirects to the root path if encrypted_confirmation_text is missing" do
-        visit secure_url_redirect_path(encrypted_destination: encrypted_destination)
+      it "redirects to the root path if encrypted_payload is missing" do
+        visit secure_url_redirect_path
         expect(page).to have_current_path(login_path)
       end
     end
@@ -55,8 +54,7 @@ describe("Secure Redirect", js: true, type: :feature) do
   describe "POST /secure_url_redirect" do
     before do
       visit secure_url_redirect_path(
-        encrypted_destination: encrypted_destination,
-        encrypted_confirmation_text: encrypted_confirmation_text,
+        encrypted_payload: encrypted_payload,
         message: message,
         field_name: field_name,
         error_message: error_message
@@ -94,8 +92,24 @@ describe("Secure Redirect", js: true, type: :feature) do
       end
     end
 
-    context "with an invalid destination" do
-      let(:encrypted_destination) { SecureEncryptService.encrypt(nil) }
+    context "with an invalid payload" do
+      let(:invalid_secure_payload) do
+        {
+          destination: nil,
+          confirmation_texts: [confirmation_text],
+          created_at: Time.current.to_i
+        }
+      end
+      let(:invalid_encrypted_payload) { SecureEncryptService.encrypt(invalid_secure_payload.to_json) }
+
+      before do
+        visit secure_url_redirect_path(
+          encrypted_payload: invalid_encrypted_payload,
+          message: message,
+          field_name: field_name,
+          error_message: error_message
+        )
+      end
 
       it "shows an error message" do
         fill_in field_name, with: confirmation_text
@@ -107,15 +121,24 @@ describe("Secure Redirect", js: true, type: :feature) do
       end
     end
 
-    context "with a tampered destination" do
-      let(:encrypted_destination) { "tampered" }
+    context "with a tampered payload" do
+      let(:tampered_encrypted_payload) { "tampered" }
+
+      before do
+        visit secure_url_redirect_path(
+          encrypted_payload: tampered_encrypted_payload,
+          message: message,
+          field_name: field_name,
+          error_message: error_message
+        )
+      end
 
       it "shows an error message" do
         fill_in field_name, with: confirmation_text
         click_button "Continue"
         wait_for_ajax
 
-        expect(page).to have_content("Invalid destination")
+        expect(page).to have_content("Invalid request")
         expect(page).to have_current_path(secure_url_redirect_path, ignore_query: true)
       end
     end

@@ -82,23 +82,28 @@ class PurchasesController < ApplicationController
       end
     end
     confirmation_emails << purchase.email
-    encrypted_confirmation_text = confirmation_emails.map { SecureEncryptService.encrypt(_1) }.join(',')
 
-    if encrypted_confirmation_text.present?
+    if confirmation_emails.any?
       destination_url = unsubscribe_purchase_url(id: purchase.secure_external_id(scope: "unsubscribe", expires_at: 2.days.from_now))
-      encrypted_destination = SecureEncryptService.encrypt(destination_url)
+
+      # Bundle confirmation_text and destination into a single encrypted payload
+      secure_payload = {
+        destination: destination_url,
+        confirmation_texts: confirmation_emails.to_a,
+        created_at: Time.current.to_i,
+        send_confirmation_text: true
+      }
+      encrypted_payload = SecureEncryptService.encrypt(secure_payload.to_json)
+
       message = "Please enter your email address to unsubscribe"
       error_message = "Email address does not match"
       field_name = "Email address"
-      send_confirmation_text = "true"
 
       redirect_to secure_url_redirect_path(
-        encrypted_destination: encrypted_destination,
-        encrypted_confirmation_text: encrypted_confirmation_text,
+        encrypted_payload: encrypted_payload,
         message: message,
         field_name: field_name,
-        error_message: error_message,
-        send_confirmation_text: send_confirmation_text
+        error_message: error_message
       )
       return
     end

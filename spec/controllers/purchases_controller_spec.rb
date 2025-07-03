@@ -1252,7 +1252,7 @@ describe PurchasesController, :vcr do
         end
       end
 
-      context "with legacy external_id (secure redirect flow)" do
+      context "with legacy external_id" do
         context "when purchase exists" do
           it "redirects to secure redirect page for confirmation" do
             purchase = create(:purchase, can_contact: true, email: "test@example.com")
@@ -1260,12 +1260,10 @@ describe PurchasesController, :vcr do
 
             expect(response).to be_redirect
             expect(response.location).to start_with(secure_url_redirect_url)
-            expect(response.location).to include("encrypted_destination")
-            expect(response.location).to include("encrypted_confirmation_text")
+            expect(response.location).to include("encrypted_payload")
             expect(response.location).to include("message=Please+enter+your+email+address+to+unsubscribe")
             expect(response.location).to include("field_name=Email+address")
             expect(response.location).to include("error_message=Email+address+does+not+match")
-            expect(response.location).to include("send_confirmation_text=true")
           end
 
           it "includes correct destination URL in redirect params" do
@@ -1274,8 +1272,13 @@ describe PurchasesController, :vcr do
 
             get :unsubscribe, params: { id: purchase.external_id }
 
-            expect(SecureEncryptService).to have_received(:encrypt).with(purchase.email)
-            expect(SecureEncryptService).to have_received(:encrypt).with(a_string_matching(%r{/purchases/.*unsubscribe}))
+            expect(SecureEncryptService).to have_received(:encrypt).once
+            # Verify that the encrypted payload contains the expected data
+            encrypted_payload = URI.decode_www_form(URI.parse(response.location).query).to_h["encrypted_payload"]
+            decrypted_payload = JSON.parse(SecureEncryptService.decrypt(encrypted_payload))
+            expect(decrypted_payload["destination"]).to match(%r{/purchases/.*unsubscribe})
+            expect(decrypted_payload["confirmation_texts"]).to include(purchase.email)
+            expect(decrypted_payload["send_confirmation_text"]).to be(true)
           end
 
           it "includes encrypted purchase email for confirmation" do
@@ -1284,7 +1287,11 @@ describe PurchasesController, :vcr do
 
             get :unsubscribe, params: { id: purchase.external_id }
 
-            expect(SecureEncryptService).to have_received(:encrypt).with(purchase.email)
+            expect(SecureEncryptService).to have_received(:encrypt).once
+            # Verify that the encrypted payload contains the expected data
+            encrypted_payload = URI.decode_www_form(URI.parse(response.location).query).to_h["encrypted_payload"]
+            decrypted_payload = JSON.parse(SecureEncryptService.decrypt(encrypted_payload))
+            expect(decrypted_payload["confirmation_texts"]).to include(purchase.email)
           end
         end
 
@@ -1300,8 +1307,12 @@ describe PurchasesController, :vcr do
 
             get :unsubscribe, params: { id: charge.external_id }
 
-            expect(SecureEncryptService).to have_received(:encrypt).with("buyer1@example.com")
-            expect(SecureEncryptService).to have_received(:encrypt).with("buyer2@example.com")
+            expect(SecureEncryptService).to have_received(:encrypt).once
+            # Verify that the encrypted payload contains all emails
+            encrypted_payload = URI.decode_www_form(URI.parse(response.location).query).to_h["encrypted_payload"]
+            decrypted_payload = JSON.parse(SecureEncryptService.decrypt(encrypted_payload))
+            expect(decrypted_payload["confirmation_texts"]).to include("buyer1@example.com")
+            expect(decrypted_payload["confirmation_texts"]).to include("buyer2@example.com")
           end
 
           it "handles case where charge external_id is used but purchase also exists" do
@@ -1318,7 +1329,11 @@ describe PurchasesController, :vcr do
 
             get :unsubscribe, params: { id: charge.external_id }
 
-            expect(SecureEncryptService).to have_received(:encrypt).with("buyer@example.com")
+            expect(SecureEncryptService).to have_received(:encrypt).once
+            # Verify that the encrypted payload contains the email
+            encrypted_payload = URI.decode_www_form(URI.parse(response.location).query).to_h["encrypted_payload"]
+            decrypted_payload = JSON.parse(SecureEncryptService.decrypt(encrypted_payload))
+            expect(decrypted_payload["confirmation_texts"]).to include("buyer@example.com")
           end
 
           it "redirects to secure redirect when no purchase found but charge exists" do
