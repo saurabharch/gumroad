@@ -57,11 +57,11 @@ class PurchasesController < ApplicationController
     @purchase = Purchase.find_by_secure_external_id(params[:id], scope: "unsubscribe")
 
     # If the confirmation_text is present, we are here from secure_redirect_controller#create.
-    # There's a chance Charge#id is used instead of Purchase#id. We need to look up the purchase
-    # by Charge in that case.
-    if params[:confirmation_text].present?
-      if @purchase.email != params[:confirmation_text]
-        @purchase = Charge.find(@purchase.id).successful_purchases.last
+    # There's a chance Charge#id is used instead of Purchase#id in the original unsubscribe URL.
+    # We need to look up the purchase by Charge#id in that case.
+    if params[:confirmation_text].present? && @purchase.email != params[:confirmation_text]
+      @purchase = Purchase.find_by(id: @purchase.charge.id)
+      e404 if @purchase.email != params[:confirmation_text]
     end
 
     if @purchase.present?
@@ -69,14 +69,19 @@ class PurchasesController < ApplicationController
       return
     end
 
-    # Fall back to legacy external_id
+    # Fall back to legacy external_id and initiate secure redirect flow
     purchase = Purchase.find_by_external_id(params[:id])
     charge = Charge.find_by_external_id(params[:id])
 
-    encrypted_confirmation_text = [SecureEncryptService.encrypt(purchase.email)] if purchase.present?
+    confirmation_emails = Set.new
     if charge.present? && charge.successful_purchases.any?
-      encrypted_confirmation_text += charge.successful_purchases.map(&:email).uniq.map { |email| SecureEncryptService.encrypt(email) }
+      confirmation_emails += charge.successful_purchases.map(&:email)
+      unless purchase.present?
+        purchase = charge.successful_purchases.last
+      end
     end
+    confirmation_emails << purchase.email
+    encrypted_confirmation_text = confirmation_emails.map { SecureEncryptService.encrypt(_1) }
 
     if encrypted_confirmation_text.present?
       destination_url = unsubscribe_purchase_url(id: purchase.secure_external_id(scope: "unsubscribe", expires_at: 2.days.from_now))
