@@ -15,7 +15,7 @@ class SecureRedirectController < ApplicationController
       return render json: { error: "Please enter the confirmation text" }, status: :unprocessable_entity
     end
 
-    encrypted_confirmation_texts = Array.wrap(@encrypted_confirmation_text)
+    encrypted_confirmation_texts = @encrypted_confirmation_text.split(',')
 
     if encrypted_confirmation_texts.any? { SecureEncryptService.verify(_1, confirmation_text) }
       destination = SecureEncryptService.decrypt(@encrypted_destination)

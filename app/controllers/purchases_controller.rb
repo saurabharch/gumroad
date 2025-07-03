@@ -82,7 +82,7 @@ class PurchasesController < ApplicationController
       end
     end
     confirmation_emails << purchase.email
-    encrypted_confirmation_text = confirmation_emails.map { SecureEncryptService.encrypt(_1) }
+    encrypted_confirmation_text = confirmation_emails.map { SecureEncryptService.encrypt(_1) }.join(',')
 
     if encrypted_confirmation_text.present?
       destination_url = unsubscribe_purchase_url(id: purchase.secure_external_id(scope: "unsubscribe", expires_at: 2.days.from_now))

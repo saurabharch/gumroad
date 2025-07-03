@@ -182,7 +182,7 @@ describe SecureRedirectController, type: :controller do
       end
     end
 
-    context "with array of encrypted confirmation texts" do
+    context "with comma-separated encrypted confirmation texts" do
       let(:confirmation_text_1) { "user1@example.com" }
       let(:confirmation_text_2) { "user2@example.com" }
       let(:confirmation_text_3) { "user3@example.com" }
@@ -191,7 +191,7 @@ describe SecureRedirectController, type: :controller do
           SecureEncryptService.encrypt(confirmation_text_1),
           SecureEncryptService.encrypt(confirmation_text_2),
           SecureEncryptService.encrypt(confirmation_text_3)
-        ]
+        ].join(',')
       end
 
       it "accepts confirmation text that matches any of the encrypted texts" do
@@ -215,17 +215,16 @@ describe SecureRedirectController, type: :controller do
 
       it "works with single encrypted confirmation text (backward compatibility)" do
         post :create, params: valid_params.merge(
-          encrypted_confirmation_text: encrypted_confirmation_texts.first,
+          encrypted_confirmation_text: encrypted_confirmation_texts.split(',').first,
           confirmation_text: confirmation_text_1
         )
 
         expect(response).to redirect_to(destination_url)
       end
 
-      it "handles empty array gracefully" do
-        # Since empty array might be considered blank by Rails params validation,
-        # we should pass a non-empty but invalid array instead
-        invalid_encrypted_text = ["invalid_encrypted_text"]
+      it "handles empty string gracefully" do
+        # Test with invalid encrypted text
+        invalid_encrypted_text = "invalid_encrypted_text"
         post :create, params: valid_params.merge(
           encrypted_confirmation_text: invalid_encrypted_text,
           confirmation_text: confirmation_text_1
@@ -310,7 +309,7 @@ describe SecureRedirectController, type: :controller do
         tampered_encrypted = encrypted_confirmation_text + "tamper"
         valid_encrypted = SecureEncryptService.encrypt("valid@example.com")
         post :create, params: valid_params.merge(
-          encrypted_confirmation_text: [tampered_encrypted, valid_encrypted],
+          encrypted_confirmation_text: [tampered_encrypted, valid_encrypted].join(','),
           confirmation_text: "valid@example.com"
         )
 
