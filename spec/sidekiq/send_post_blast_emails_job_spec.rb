@@ -8,6 +8,11 @@ describe SendPostBlastEmailsJob, :freeze_time do
 
   before do
     @seller = create(:named_user)
+
+    # Since secure_external_id changes on each call, we need to mock it to get a consistent value
+    allow_any_instance_of(Purchase).to receive(:secure_external_id) do |purchase, scope:|
+      "sample-secure-id-#{scope}-#{purchase.id}"
+    end
   end
 
   let(:basic_post_with_audience) do
